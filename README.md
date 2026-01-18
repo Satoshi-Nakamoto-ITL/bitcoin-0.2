@@ -1,72 +1,48 @@
-# Bitcoin v0.2 — Revelation
+# Bitcoin v0.2 — Revelation Edition
 
-Bitcoin v0.2 — Revelation is a **live Proof-of-Work blockchain network implemented in Rust**, following early Bitcoin design principles.
+Rust-only, Proof-of-Work blockchain implementation Bitcoin.
 
-The network uses a deterministic genesis block, SHA-256 double-hash Proof-of-Work, and a UTXO-based ledger model.
+No governance.
+No identities.
+No permissions.
 
-There is **no central authority**, **no governance**, and **no upgrade mechanism**.
-
-## Network Status
-
-* Live private-origin mainnet
-* Deterministic genesis (frozen)
-* Proof-of-Work: double SHA-256
-* UTXO-based ledger
-* Fixed monetary schedule
-* No governance
-* No protocol upgrades
-
-Nodes independently validate all rules from genesis.
-
-## Requirements
-
-* Rust (stable)
-* Cargo
-
-Install Rust: [https://rustup.rs](https://rustup.rs)
-
-## Run a Node
-
-Clone the repository:
+## Build
 
 ```bash
-git clone <REPO_URL>
-cd bitcoin_v0_2_revelation
+cargo build --release
 ```
 
-Run the node:
+## Run
 
 ```bash
 cargo run --release
 ```
 
-On first run:
+On first run, the node deterministically creates the revelation block and begins mining locally.
+Chain state is stored in the `data/` directory.
 
-* The genesis block is created deterministically
-* Blocks are mined using Proof-of-Work
-* Chain state is stored in the `data/` directory
+## Block 0 (Revelation)
 
-To preserve chain history, **do not delete** the `data/` directory.
+**Revelation Block**
 
-## Consensus
+The genesis block is deterministic, reproducible, and verified across multiple independent nodes.
 
-Consensus rules are defined in `CONSENSUS.md`.
+A message is permanently sealed into Proof-of-Work time.
 
-Nodes following the same rules and starting from genesis **must reach identical results**.
+## Consensus Rules
 
-Consensus is enforced entirely by code and Proof-of-Work.
+* Proof-of-Work (double SHA-256)
+* Longest chain by accumulated work
+* UTXO-based ledger model
+* Initial subsidy: 50 coins
+* Halving every 210,000 blocks
+* Difficulty retargeting
+* No administrative controls
+* No governance
+* No permissions
 
-## Participation
+Consensus rules are enforced by code and Proof-of-Work alone.
 
-* Anyone may run a node
-* Anyone may mine
-* No permission is required
-* No registration is required
+## Doctrine
 
-The network does not provide accounts, custodial services, or guarantees.
-
-## Disclaimer
-
-This project is software implementing a blockchain protocol.
-
-It does not represent an investment offering, financial product, or promise of value.
+**Time + Energy = Truth**
