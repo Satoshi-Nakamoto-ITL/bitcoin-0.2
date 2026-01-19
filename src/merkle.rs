@@ -1,9 +1,13 @@
 use crate::crypto::sha256;
 use crate::transaction::Transaction;
 
-pub fn merkle_root(txs: &[Transaction]) -> Vec<u8> {
+pub fn merkle_root(
+    txs: &[Transaction],
+    height: u64,
+    prev_hash: &[u8],
+) -> Vec<u8> {
     if txs.is_empty() {
-        return vec![0u8; 32];
+        return sha256(&[prev_hash, &height.to_le_bytes()].concat());
     }
 
     let mut hashes: Vec<Vec<u8>> =
@@ -16,9 +20,17 @@ pub fn merkle_root(txs: &[Transaction]) -> Vec<u8> {
 
         hashes = hashes
             .chunks(2)
-            .map(|pair| sha256(&[pair[0].clone(), pair[1].clone()].concat()))
+            .map(|pair| {
+                sha256(
+                    &[
+                        pair[0].clone(),
+                        pair[1].clone(),
+                        height.to_le_bytes().to_vec(),
+                    ]
+                    .concat(),
+                )
+            })
             .collect();
     }
-
-    hashes[0].clone()
+    sha256(&[hashes[0].clone(), prev_hash.to_vec()].concat())
 }

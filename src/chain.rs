@@ -12,12 +12,15 @@ use crate::{
     reward::block_reward,
     revelation::revelation_tx,
     merkle::merkle_root,
+    difficulty::retarget,
 };
+
+const TARGET_BLOCK_TIME: i64 = 10;
+const GENESIS_DIFFICULTY: u32 = 256;
 
 pub struct Blockchain {
     pub blocks: Vec<Block>,
     pub utxos: UTXOSet,
-    pub difficulty: u32,
 }
 
 fn data_dir() -> PathBuf {
@@ -44,7 +47,6 @@ impl Blockchain {
         Self {
             blocks: vec![],
             utxos: HashMap::new(),
-            difficulty: 2,
         }
     }
 
@@ -71,14 +73,20 @@ impl Blockchain {
         if self.blocks.is_empty() {
             let txs = vec![revelation_tx()];
 
+            let merkle = merkle_root(
+                &txs,
+                0,
+                &[0u8; 32],
+            );
+
             let mut genesis = Block {
                 header: BlockHeader {
                     height: 0,
-                    timestamp: 1730000000, // fixed, deterministic
+                    timestamp: 1730000000, 
                     prev_hash: vec![0u8; 32],
                     nonce: 0,
-                    difficulty: self.difficulty,
-                    merkle_root: merkle_root(&txs),
+                    difficulty: GENESIS_DIFFICULTY,
+                    merkle_root: merkle,
                 },
                 transactions: txs,
                 hash: vec![],
@@ -107,16 +115,32 @@ impl Blockchain {
         };
 
         let prev = self.blocks.last().unwrap();
+
+        let timestamp = OffsetDateTime::now_utc().unix_timestamp();
+        let actual_time = timestamp - prev.header.timestamp;
+
+        let difficulty = retarget(
+            prev.header.difficulty,
+            actual_time,
+            TARGET_BLOCK_TIME,
+        );
+
         let txs = vec![coinbase];
+
+        let merkle = merkle_root(
+            &txs,
+            height,
+            &prev.hash,
+        );
 
         let mut block = Block {
             header: BlockHeader {
                 height,
-                timestamp: OffsetDateTime::now_utc().unix_timestamp(),
+                timestamp,
                 prev_hash: prev.hash.clone(),
                 nonce: 0,
-                difficulty: self.difficulty,
-                merkle_root: merkle_root(&txs),
+                difficulty,
+                merkle_root: merkle,
             },
             transactions: txs,
             hash: vec![],
@@ -128,7 +152,10 @@ impl Blockchain {
         self.rebuild_utxos();
         self.save_all();
 
-        println!("Mined block {}", height);
+        println!(
+            "Mined block {} (diff={})",
+            height, difficulty
+        );
     }
 
     pub fn rebuild_utxos(&mut self) {
@@ -140,7 +167,11 @@ impl Blockchain {
                 let txid_hex = hex::encode(&txid);
 
                 for input in &tx.inputs {
-                    let key = format!("{}:{}", hex::encode(&input.txid), input.index);
+                    let key = format!(
+                        "{}:{}",
+                        hex::encode(&input.txid),
+                        input.index
+                    );
                     self.utxos.remove(&key);
                 }
 
@@ -161,10 +192,12 @@ impl Blockchain {
     pub fn save_all(&self) {
         fs::create_dir_all(data_dir()).unwrap();
 
-        let blocks_json = serde_json::to_string_pretty(&self.blocks).unwrap();
+        let blocks_json =
+            serde_json::to_string_pretty(&self.blocks).unwrap();
         fs::write(blocks_file(), blocks_json).unwrap();
 
-        let utxos_json = serde_json::to_string_pretty(&self.utxos).unwrap();
+        let utxos_json =
+            serde_json::to_string_pretty(&self.utxos).unwrap();
         fs::write(utxos_file(), utxos_json).unwrap();
     }
 }
