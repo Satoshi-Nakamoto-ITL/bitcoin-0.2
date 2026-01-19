@@ -1,45 +1,26 @@
 use crate::block::Block;
-use crate::crypto::sha256;
-
-const SCRATCH_SIZE: usize = 32 * 1024 * 1024;
 
 fn valid_pow(hash: &[u8], difficulty: u32) -> bool {
-    let mut remaining = difficulty;
+    let mut count = 0;
 
     for byte in hash {
-        let zeros = byte.leading_zeros();
+        let z = byte.leading_zeros();
+        count += z;
 
-        if zeros >= remaining {
+        if z < 8 {
+            break;
+        }
+        if count >= difficulty {
             return true;
         }
-
-        if zeros < 8 {
-            return false;
-        }
-
-        remaining -= 8;
     }
 
-    false
+    count >= difficulty
 }
 
 pub fn mine(block: &mut Block) {
-    let mut scratch = vec![0u8; SCRATCH_SIZE];
-
     loop {
-        let mut hash = block.hash_header();
-
-        for i in 0..block.header.difficulty {
-            let idx = (
-                (hash[i as usize % hash.len()] as usize) << 8
-                | hash[(i + 1) as usize % hash.len()] as usize
-            ) % (SCRATCH_SIZE - 64);
-
-            for j in 0..64 {
-                scratch[idx + j] ^= hash[j % hash.len()];
-            }
-            hash = sha256(&[hash, scratch[idx..idx + 64].to_vec()].concat());
-        }
+        let hash = block.hash_header();
 
         if valid_pow(&hash, block.header.difficulty) {
             block.hash = hash;
