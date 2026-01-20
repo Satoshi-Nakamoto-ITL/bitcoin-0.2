@@ -1,6 +1,13 @@
 use bitcoin_v0_2_revelation::chain::Blockchain;
 use bitcoin_v0_2_revelation::network::P2PNetwork;
 use std::net::SocketAddr;
+use std::time::Duration;
+use std::thread::sleep;
+
+enum NodeMode {
+    Syncing,
+    Normal,
+}
 
 fn print_chain(chain: &Blockchain) {
     println!("\n🔗 Full Blockchain:");
@@ -23,60 +30,72 @@ fn main() {
 
     let miner_key = "REVELATION_MINER_001";
 
-    // P2P Configuration - add seed node addresses here to connect to peers
-    let listen_addr = "127.0.0.1:8333".parse::<SocketAddr>().unwrap();
+    let listen_addr = "0.0.0.0:8333".parse::<SocketAddr>().unwrap();
     let seed_nodes: Vec<SocketAddr> = vec![
-        // Example seed nodes - modify these to connect to actual peers
-        // "192.168.1.100:8333".parse::<SocketAddr>().unwrap(),
-        // "192.168.1.101:8333".parse::<SocketAddr>().unwrap(),
-        // "10.0.0.50:8333".parse::<SocketAddr>().unwrap(),
-        // For local testing, uncomment and use different ports:
-        // "127.0.0.1:8334".parse::<SocketAddr>().unwrap(),
-        // "127.0.0.1:8335".parse::<SocketAddr>().unwrap(),
+        // add real public peers here
     ];
 
-    // Initialize P2P network
     let p2p = P2PNetwork::with_seeds(listen_addr, seed_nodes);
-    println!("🌐 P2P Network initialized (listen on {})", listen_addr);
-    println!("📡 Connected to {} peer(s)", p2p.peer_count());
 
-    let mut block_count = 0;
+    println!("🌐 P2P listening on {}", listen_addr);
+    println!("📡 Peers connected: {}", p2p.peer_count());
+
+    let mut mode = NodeMode::Syncing;
+    let mut block_counter = 0u64;
+
+    println!("🔄 Starting initial sync");
+    p2p.request_chain_state();
+
     loop {
-        chain.mine_block(miner_key);
-        block_count += 1;
-
-        // Broadcast mined block to peers every block
-        if let Some(latest) = chain.blocks.last() {
-            p2p.broadcast_block(latest);
+        if let Some(block) = p2p.receive_block() {
+            if chain.validate_and_add_block(block) {
+                println!("📥 Block accepted | height {}", chain.height());
+            }
         }
 
-        // Display chain status every 5 blocks
-        if block_count % 5 == 0 {
-            println!("\n📊 Blockchain Status:");
-            println!("Height: {}", chain.blocks.len());
-            println!("Difficulty: {}", chain.difficulty);
-            println!("UTXO Set Size: {}", chain.utxos.len());
-            println!("Connected Peers: {}", p2p.peer_count());
-            
-            if let Some(latest) = chain.blocks.last() {
-                println!("Latest Block Height: {}", latest.header.height);
-                println!("Latest Block Transactions: {}", latest.transactions.len());
+        match mode {
+            NodeMode::Syncing => {
+                if !p2p.is_syncing() {
+                    println!("✅ Sync complete at height {}", chain.height());
+                    mode = NodeMode::Normal;
+                }
+                sleep(Duration::from_millis(100));
             }
 
-            // Show network stats every 10 blocks
-            if block_count % 10 == 0 {
-                let stats = p2p.get_stats();
-                println!("\n🌐 Network Stats:");
-                println!("  Total Peers: {}", stats.total_peers);
-                println!("  Validated Peers: {}", stats.validated_peers);
-                println!("  Known Nodes: {}", stats.known_nodes);
-                println!("  Max Peers: {}", stats.max_peers);
-            }
+            NodeMode::Normal => {
+                chain.mine_block(miner_key);
+                block_counter += 1;
 
-            // Cleanup stale peers every 20 blocks
-            if block_count % 20 == 0 {
-                p2p.cleanup_stale_peers();
-                print_chain(&chain);
+                if let Some(latest) = chain.blocks.last() {
+                    p2p.broadcast_block(latest);
+                }
+
+                if block_counter % 5 == 0 {
+                    println!("\n📊 Blockchain Status:");
+                    println!("Height: {}", chain.blocks.len());
+                    println!("Difficulty: {}", chain.difficulty);
+                    println!("UTXO Set Size: {}", chain.utxos.len());
+                    println!("Connected Peers: {}", p2p.peer_count());
+
+                    if let Some(latest) = chain.blocks.last() {
+                        println!("Latest Block Height: {}", latest.header.height);
+                        println!("Latest Block Transactions: {}", latest.transactions.len());
+                    }
+                }
+
+                if block_counter % 10 == 0 {
+                    let stats = p2p.get_stats();
+                    println!("\n🌐 Network Stats:");
+                    println!("  Total Peers: {}", stats.total_peers);
+                    println!("  Validated Peers: {}", stats.validated_peers);
+                    println!("  Known Nodes: {}", stats.known_nodes);
+                    println!("  Max Peers: {}", stats.max_peers);
+                }
+
+                if block_counter % 20 == 0 {
+                    p2p.cleanup_stale_peers();
+                    print_chain(&chain);
+                }
             }
         }
     }
