@@ -43,32 +43,6 @@ impl P2PNetwork {
         network
     }
 
-    pub fn connect_to_peer(&self, addr: SocketAddr) {
-        let peers = Arc::clone(&self.peers);
-        let chain = Arc::clone(&self.chain);
-
-        thread::spawn(move || {
-            match TcpStream::connect(addr) {
-                Ok(stream) => {
-                    stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
-                    let key = addr.to_string();
-
-                    peers.lock().unwrap().insert(
-                        key.clone(),
-                        PeerNode {
-                            address: addr,
-                            last_seen: now(),
-                            stream: stream.try_clone().unwrap(),
-                        },
-                    );
-
-                    Self::handle_peer(stream, peers, chain);
-                }
-                Err(_) => {}
-            }
-        });
-    }
-
     fn start_listening(&self) {
         let listener = TcpListener::bind(self.listen_addr).unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -79,11 +53,10 @@ impl P2PNetwork {
         thread::spawn(move || loop {
             match listener.accept() {
                 Ok((stream, addr)) => {
-                    let key = addr.to_string();
                     stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
 
                     peers.lock().unwrap().insert(
-                        key.clone(),
+                        addr.to_string(),
                         PeerNode {
                             address: addr,
                             last_seen: now(),
@@ -107,7 +80,7 @@ impl P2PNetwork {
 
     fn handle_peer(
         mut stream: TcpStream,
-        peers: Arc<Mutex<HashMap<String, PeerNode>>>,
+        _peers: Arc<Mutex<HashMap<String, PeerNode>>>,
         chain: Arc<Mutex<Blockchain>>,
     ) {
         loop {
@@ -156,10 +129,9 @@ impl P2PNetwork {
         let data = bincode::serialize(&msg).unwrap();
 
         let mut peers = self.peers.lock().unwrap();
-for peer in peers.values_mut() {
-    let _ = peer.stream.write_all(&data);
-}
-
+        for peer in peers.values_mut() {
+            let _ = peer.stream.write_all(&data);
+        }
     }
 
     pub fn broadcast_block(&self, block: &Block) {
@@ -167,10 +139,9 @@ for peer in peers.values_mut() {
         let data = bincode::serialize(&msg).unwrap();
 
         let mut peers = self.peers.lock().unwrap();
-for peer in peers.values_mut() {
-    let _ = peer.stream.write_all(&data);
-}
-
+        for peer in peers.values_mut() {
+            let _ = peer.stream.write_all(&data);
+        }
     }
 
     pub fn peer_count(&self) -> usize {
