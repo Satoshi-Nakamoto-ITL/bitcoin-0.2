@@ -4,7 +4,7 @@ use bitcoin_v0_2_revelation::network::P2PNetwork;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 enum NodeMode {
     Syncing,
@@ -35,13 +35,13 @@ fn main() {
     let miner_key = "REVELATION_MINER_001";
 
     let listen_addr = "0.0.0.0:8333".parse::<SocketAddr>().unwrap();
-
     let p2p = P2PNetwork::new(listen_addr, Arc::clone(&chain));
 
     println!("🌐 P2P listening on {}", listen_addr);
 
     let mut mode = NodeMode::Syncing;
     let mut last_height = chain.lock().unwrap().height();
+    let mut last_change = Instant::now();
     let mut mined_blocks = 0u64;
 
     println!("🔄 Requesting sync from peers");
@@ -52,17 +52,19 @@ fn main() {
             NodeMode::Syncing => {
                 let height = chain.lock().unwrap().height();
 
-                if height > last_height {
+                if height != last_height {
                     println!("📥 Sync progress | height {}", height);
                     last_height = height;
+                    last_change = Instant::now();
                 }
 
-                if height > 0 {
+                // If no new blocks for 3 seconds, assume sync complete
+                if last_change.elapsed() > Duration::from_secs(3) && height > 0 {
                     println!("✅ Sync complete at height {}", height);
                     mode = NodeMode::Normal;
                 }
 
-                sleep(Duration::from_millis(500));
+                sleep(Duration::from_millis(300));
             }
 
             NodeMode::Normal => {
@@ -98,6 +100,7 @@ fn main() {
                     print_chain(&chain);
                 }
 
+                // Yield CPU to networking
                 sleep(Duration::from_millis(100));
             }
         }
