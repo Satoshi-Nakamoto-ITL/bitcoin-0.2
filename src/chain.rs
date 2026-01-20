@@ -48,6 +48,10 @@ impl Blockchain {
         }
     }
 
+    pub fn height(&self) -> u64 {
+        self.blocks.len() as u64
+    }
+
     pub fn initialize(&mut self) {
         fs::create_dir_all(data_dir()).unwrap();
 
@@ -63,7 +67,6 @@ impl Blockchain {
             let data = fs::read_to_string(utxos_file()).unwrap();
             if !data.trim().is_empty() {
                 self.utxos = serde_json::from_str(&data).unwrap();
-                println!("Loaded UTXO set ({} entries)", self.utxos.len());
                 return;
             }
         }
@@ -86,11 +89,8 @@ impl Blockchain {
 
             mine(&mut genesis);
             self.blocks.push(genesis);
-
             self.rebuild_utxos();
             self.save_all();
-
-            println!("Genesis block created");
         }
     }
 
@@ -124,11 +124,34 @@ impl Blockchain {
 
         mine(&mut block);
         self.blocks.push(block);
-
         self.rebuild_utxos();
         self.save_all();
+    }
 
-        println!("Mined block {}", height);
+    pub fn validate_and_add_block(&mut self, block: Block) -> bool {
+        let expected_height = self.blocks.len() as u64;
+        let prev = self.blocks.last().unwrap();
+
+        if block.header.height != expected_height {
+            return false;
+        }
+
+        if block.header.prev_hash != prev.hash {
+            return false;
+        }
+
+        if !block.verify_pow() {
+            return false;
+        }
+
+        if merkle_root(&block.transactions) != block.header.merkle_root {
+            return false;
+        }
+
+        self.blocks.push(block);
+        self.rebuild_utxos();
+        self.save_all();
+        true
     }
 
     pub fn rebuild_utxos(&mut self) {
@@ -136,8 +159,7 @@ impl Blockchain {
 
         for block in &self.blocks {
             for tx in &block.transactions {
-                let txid = tx.txid();
-                let txid_hex = hex::encode(&txid);
+                let txid = hex::encode(tx.txid());
 
                 for input in &tx.inputs {
                     let key = format!("{}:{}", hex::encode(&input.txid), input.index);
@@ -145,7 +167,7 @@ impl Blockchain {
                 }
 
                 for (i, output) in tx.outputs.iter().enumerate() {
-                    let key = format!("{}:{}", txid_hex, i);
+                    let key = format!("{}:{}", txid, i);
                     self.utxos.insert(
                         key,
                         UTXO {
@@ -160,30 +182,7 @@ impl Blockchain {
 
     pub fn save_all(&self) {
         fs::create_dir_all(data_dir()).unwrap();
-
-        let blocks_json = serde_json::to_string_pretty(&self.blocks).unwrap();
-        fs::write(blocks_file(), blocks_json).unwrap();
-
-        let utxos_json = serde_json::to_string_pretty(&self.utxos).unwrap();
-        fs::write(utxos_file(), utxos_json).unwrap();
-    }
-
-    pub fn validate_block(block: &Block) -> bool {
-        if block.header.height < 0 {
-            println!("❌ Invalid block: negative height");
-            return false;
-        }
-
-        if block.transactions.is_empty() {
-            println!("❌ Invalid block: no transactions");
-            return false;
-        }
-
-        if block.header.difficulty == 0 {
-            println!("❌ Invalid block: invalid difficulty");
-            return false;
-        }
-
-        true
+        fs::write(blocks_file(), serde_json::to_string_pretty(&self.blocks).unwrap()).unwrap();
+        fs::write(utxos_file(), serde_json::to_string_pretty(&self.utxos).unwrap()).unwrap();
     }
 }
