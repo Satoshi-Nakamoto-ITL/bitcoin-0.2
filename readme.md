@@ -1,10 +1,10 @@
 # Bitcoin v0.2 – Revelation Edition
 
-Bitcoin v0.2 is an experimental peer-to-peer electronic cash system written in Rust.
+Bitcoin v0.2 – Revelation Edition is an experimental peer-to-peer electronic cash system written in Rust.
 
-The system allows nodes to maintain a distributed timestamped chain of blocks using proof-of-work and to synchronize this chain over a decentralized network without relying on a central server.
+It is designed to demonstrate the **core mechanics of a decentralized proof-of-work blockchain**, including mining, block propagation, chain synchronization, and fork resolution — without relying on any central coordinator or server.
 
-This project is intended for study, experimentation, and long-running node operation.
+This project is intended for **study, experimentation, and long-running private node operation**.
 
 ---
 
@@ -12,132 +12,167 @@ This project is intended for study, experimentation, and long-running node opera
 
 Each node maintains a full copy of the blockchain and participates equally in the network.
 
-Nodes:
+Nodes can:
 
-* validate blocks
-* mine new blocks using proof-of-work
-* relay blocks to peers
-* synchronize missing blocks automatically
+- validate blocks independently
+- mine new blocks using proof-of-work
+- relay blocks to peers
+- synchronize missing blocks automatically
+- resolve forks using cumulative proof-of-work
 
-Consensus is achieved by accepting the longest valid chain.
+There is no master node, leader, or trusted authority.
+
+---
+
+## Consensus Model
+
+Consensus follows a **Bitcoin-style fork choice rule**:
+
+- Blocks must be valid and satisfy proof-of-work
+- Multiple competing chains are allowed
+- The chain with the **most accumulated work** is selected as canonical
+- Nodes may reorganize their local chain when a stronger chain is discovered
+
+Block height is **derived from ancestry**, not enforced by the network.
+
+Temporary disagreement is expected and resolved automatically.
+
+---
+
+## Revelation Block
+
+The first block (height 0) is referred to as the **Revelation Block**.
+
+- It has no parent (`prev_hash = 0x00…00`)
+- It contains a single `revelation_tx` transaction
+- It establishes the initial state of the chain
+- It is deterministic and shared by all nodes
+
+Internally, it follows standard genesis mechanics, but is named *Revelation* to emphasize intent rather than tradition.
 
 ---
 
 ## Features
 
-* Proof-of-Work block mining
-* Fixed block structure with Merkle root
-* Persistent blockchain and UTXO set
-* Peer-to-peer networking over TCP
-* Automatic block synchronization
-* Simple HTTP interface for inspection
-* No central authority or coordinator
+- Proof-of-Work mining
+- Fork-capable consensus with reorganization support
+- Merkle-root–based block structure
+- Persistent blockchain and UTXO storage
+- Peer-to-peer networking over raw TCP
+- Automatic block synchronization
+- Optional HTTP API for inspection
+- No central authority or coordinator
 
 ---
 
 ## Network
 
-Nodes communicate directly with each other using raw TCP connections.
+Nodes communicate directly using raw TCP connections.
 
-Default ports:
+### Default Ports
 
-* **8333** – peer-to-peer network
-* **8080** – HTTP status interface
+- **8333** – peer-to-peer network
+- **8080** – HTTP status interface (optional)
 
-The peer-to-peer port is not HTTP and should not be opened in a web browser.
+> ⚠️ The P2P port is **not HTTP** and should not be opened in a web browser.
+
+When running multiple nodes on the same machine, ensure that:
+- each node uses a different P2P port
+- the HTTP API is either disabled or assigned different ports
 
 ---
 
 ## Running a Node
 
-### Build and run
+### Build
 
 ```bash
-cargo run --release
-```
-
+cargo build
+Run a single node
+cargo run -- --port 8333 --mine
 On startup, the node will:
 
-1. Load the local blockchain from disk
-2. Create the revelation block if none exists
-3. Listen for incoming peer connections
-4. Request missing blocks from peers
-5. Begin mining once synchronization stabilizes
+load the local blockchain from disk
 
----
+create the Revelation block if none exists
 
-## HTTP Interface
+listen for incoming peer connections
 
-The HTTP interface is provided for inspection and development.
+request missing blocks from peers
 
-Available endpoints:
+begin mining once synchronization stabilizes
 
-* `/status`
-  Returns current chain height, difficulty, and UTXO count.
+Running a Private Network (Multiple Nodes)
+Node A (seed / first node)
+cargo run -- --port 8333 --data-dir nodeA --mine
+Node B (peer)
+cargo run -- --port 8334 --data-dir nodeB --peers 127.0.0.1:8333 --mine
+You may run additional nodes by assigning:
 
-* `/blocks`
-  Returns a list of known blocks.
+a unique --port
 
-Example:
+a unique --data-dir
 
-```
+Nodes will automatically discover the best chain and resolve forks.
+
+HTTP Interface
+The HTTP API is provided for inspection and development only.
+
+Endpoints
+/status
+Returns chain height, difficulty, and UTXO count
+
+/blocks
+Returns a list of known blocks
+
+Example
 http://127.0.0.1:8080/status
 http://127.0.0.1:8080/blocks
-```
+When running multiple nodes on one machine, only one node should bind to port 8080, or the API port should be changed.
 
----
-
-## Data Storage
-
+Data Storage
 Blockchain state is stored locally in JSON format.
 
-```
 data/
 ├── blocks.json
 └── utxos.json
-```
-
 Nodes may be stopped and restarted without loss of state.
 
----
+Consensus Rules (Simplified)
+Blocks must reference a known parent block
 
-## Consensus Rules (Simplified)
+Blocks must satisfy the current proof-of-work difficulty
 
-* Blocks must reference the previous block hash
-* Blocks must satisfy the current proof-of-work difficulty
-* Chains with more accumulated work are preferred
-* Invalid blocks are rejected and not relayed
+Multiple forks are allowed
 
----
+Chains with greater accumulated work are preferred
 
-## Limitations
+Nodes reorganize automatically when a better chain is found
 
+Invalid blocks are rejected and not relayed
+
+Limitations
 This software is experimental.
 
 It does not currently include:
 
-* transaction signatures
-* mempool prioritization
-* difficulty retargeting
-* network encryption
-* denial-of-service protections
+transaction gossip / mempool prioritization
 
-These may be added in later versions.
+network encryption
 
----
+denial-of-service protections
 
-## Purpose
+fast sync or snapshots
 
-This project exists to explore and demonstrate the core mechanics of a peer-to-peer proof-of-work system in a clear and compact form.
+production-grade peer discovery
+
+These may be explored in later versions.
+
+Purpose
+This project exists to explore and demonstrate the core mechanics of a peer-to-peer proof-of-work system in a clear, compact, and readable form.
 
 It is not intended for production use.
 
----
-
-## License
-
-Open source. Free to use, modify, and redistribute.
-
----
-
-Bitcoin v0.2 – Revelation Edition
+License
+Open source.
+Free to use, modify, and redistribute.
