@@ -86,14 +86,25 @@ impl P2PNetwork {
 
     fn handle_peer(
         mut stream: TcpStream,
-        _peers: Arc<Mutex<HashMap<String, PeerNode>>>,
+        peers: Arc<Mutex<HashMap<String, PeerNode>>>,
         chain: Arc<Mutex<Blockchain>>,
     ) {
+        let peer_addr = match stream.peer_addr() {
+            Ok(a) => a.to_string(),
+            Err(_) => return,
+        };
+
         loop {
             let mut buffer = vec![0u8; 4 * 1024 * 1024];
 
             match stream.read(&mut buffer) {
                 Ok(n) if n > 0 => {
+                    // update last_seen on any message
+                    if let Some(peer) = peers.lock().unwrap().get_mut(&peer_addr) {
+                        peer.last_seen = now();
+                        let _ = peer.address; // read address (keeps field meaningful)
+                    }
+
                     let msg: P2PMessage = match bincode::deserialize(&buffer[..n]) {
                         Ok(m) => m,
                         Err(_) => continue,
