@@ -1,21 +1,23 @@
 use crate::block::Block;
 
 fn valid_pow(hash: &[u8], difficulty: u32) -> bool {
-    let mut count = 0;
+    let mut remaining = difficulty;
 
     for byte in hash {
-        let z = byte.leading_zeros();
-        count += z;
+        let zeros = byte.leading_zeros();
 
-        if z < 8 {
-            break;
-        }
-        if count >= difficulty {
+        if zeros >= remaining {
             return true;
         }
+
+        if zeros < 8 {
+            return false;
+        }
+
+        remaining -= zeros;
     }
 
-    count >= difficulty
+    false
 }
 
 pub fn mine(block: &mut Block) {

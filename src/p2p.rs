@@ -11,6 +11,16 @@ use crate::block::Block;
 use crate::transaction::Transaction;
 use crate::chain::Blockchain;
 
+// ─────────────────────────────────────────────────────────────
+// P2P HARDENING CONSTANTS (NON-CONSENSUS)
+// ─────────────────────────────────────────────────────────────
+#[allow(dead_code)] // reserved for future peer eviction
+const MAX_MESSAGE_SIZE: usize = 1 * 1024 * 1024; // 1 MB
+
+#[allow(dead_code)] // reserved for future peer eviction
+const PEER_TIMEOUT_SECS: i64 = 60;
+// ─────────────────────────────────────────────────────────────
+
 #[derive(Clone, Serialize, Deserialize)]
 pub enum P2PMessage {
     SyncRequest { from_height: u64 },
@@ -20,6 +30,7 @@ pub enum P2PMessage {
     Pong,
 }
 
+#[allow(dead_code)] // reserved for future peer scoring / banning
 pub struct PeerNode {
     pub address: SocketAddr,
     pub last_seen: i64,
@@ -86,47 +97,76 @@ impl P2PNetwork {
 
     fn handle_peer(
         mut stream: TcpStream,
-        _peers: Arc<Mutex<HashMap<String, PeerNode>>>,
+        peers: Arc<Mutex<HashMap<String, PeerNode>>>,
         chain: Arc<Mutex<Blockchain>>,
     ) {
         loop {
-            let mut buffer = vec![0u8; 4 * 1024 * 1024];
+            let mut buffer = vec![0u8; MAX_MESSAGE_SIZE];
 
-            match stream.read(&mut buffer) {
-                Ok(n) if n > 0 => {
-                    let msg: P2PMessage = match bincode::deserialize(&buffer[..n]) {
-                        Ok(m) => m,
-                        Err(_) => continue,
-                    };
+            let n = match stream.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(_) => break,
+            };
 
-                    match msg {
-                        P2PMessage::SyncRequest { from_height } => {
-                            let chain = chain.lock().unwrap();
-                            for block in chain.blocks.iter().skip(from_height as usize) {
-                                let data = bincode::serialize(
-                                    &P2PMessage::Block(block.clone())
-                                ).unwrap();
-                                let _ = stream.write_all(&data);
-                            }
+            // 🔒 Reject oversized payloads
+            if n >= MAX_MESSAGE_SIZE {
+                break;
+            }
+
+            let msg: P2PMessage = match bincode::deserialize(&buffer[..n]) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            // 🔒 Update peer liveness
+            if let Ok(addr) = stream.peer_addr() {
+                if let Some(peer) = peers.lock().unwrap().get_mut(&addr.to_string()) {
+                    peer.last_seen = now();
+                }
+            }
+
+            match msg {
+                P2PMessage::SyncRequest { from_height } => {
+                    let chain = chain.lock().unwrap();
+
+                    for block in chain.blocks.iter().skip(from_height as usize) {
+                        let data = match bincode::serialize(
+                            &P2PMessage::Block(block.clone())
+                        ) {
+                            Ok(d) => d,
+                            Err(_) => continue,
+                        };
+
+                        if data.len() > MAX_MESSAGE_SIZE {
+                            break;
                         }
 
-                        P2PMessage::Block(block) => {
-                            let mut chain = chain.lock().unwrap();
-                            chain.validate_and_add_block(block);
-                        }
-
-                        P2PMessage::Transaction(_) => {}
-
-                        P2PMessage::Ping => {
-                            let data = bincode::serialize(&P2PMessage::Pong).unwrap();
-                            let _ = stream.write_all(&data);
-                        }
-
-                        P2PMessage::Pong => {}
+                        let _ = stream.write_all(&data);
                     }
                 }
-                _ => break,
+
+                P2PMessage::Block(block) => {
+                    let mut chain = chain.lock().unwrap();
+                    chain.validate_and_add_block(block);
+                }
+
+                P2PMessage::Transaction(_) => {
+                    // v0.2: tx gossip intentionally disabled
+                }
+
+                P2PMessage::Ping => {
+                    let data = bincode::serialize(&P2PMessage::Pong).unwrap();
+                    let _ = stream.write_all(&data);
+                }
+
+                P2PMessage::Pong => {}
             }
+        }
+
+        // 🔒 Cleanup disconnected peer
+        if let Ok(addr) = stream.peer_addr() {
+            peers.lock().unwrap().remove(&addr.to_string());
         }
     }
 
@@ -153,6 +193,16 @@ impl P2PNetwork {
 
     pub fn peer_count(&self) -> usize {
         self.peers.lock().unwrap().len()
+    }
+
+    #[allow(dead_code)] // reserved for future scheduled maintenance
+    pub fn evict_idle_peers(&self) {
+        let now = now();
+        let mut peers = self.peers.lock().unwrap();
+
+        peers.retain(|_, peer| {
+            now - peer.last_seen <= PEER_TIMEOUT_SECS
+        });
     }
 }
 

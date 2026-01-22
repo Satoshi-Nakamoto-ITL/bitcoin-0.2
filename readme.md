@@ -1,178 +1,308 @@
-# Bitcoin v0.2 – Revelation Edition
+Bitcoin v0.2 – Revelation Edition
 
 Bitcoin v0.2 – Revelation Edition is an experimental peer-to-peer electronic cash system written in Rust.
 
-It is designed to demonstrate the **core mechanics of a decentralized proof-of-work blockchain**, including mining, block propagation, chain synchronization, and fork resolution — without relying on any central coordinator or server.
+It is a standalone proof-of-work network designed to demonstrate the essential mechanics of decentralized consensus, block validation, and chain synchronization without any central authority.
 
-This project is intended for **study, experimentation, and long-running private node operation**.
+This software is intended for study, experimentation, and long-running private node operation.
+It is deliberately minimal.
 
----
+Design Intent
 
-## Overview
+The goal of this project is not feature completeness, but correctness of the base protocol.
 
-Each node maintains a full copy of the blockchain and participates equally in the network.
+The system implements:
 
-Nodes can:
+independent block validation by every node
 
-- validate blocks independently
-- mine new blocks using proof-of-work
-- relay blocks to peers
-- synchronize missing blocks automatically
-- resolve forks using cumulative proof-of-work
+proof-of-work–based chain selection
 
-There is no master node, leader, or trusted authority.
+automatic fork resolution
 
----
+deterministic reconstruction of state from genesis
 
-## Consensus Model
+There are no privileged nodes and no external coordinators.
+Any node may leave or rejoin the network at any time.
 
-Consensus follows a **Bitcoin-style fork choice rule**:
+Network Model
 
-- Blocks must be valid and satisfy proof-of-work
-- Multiple competing chains are allowed
-- The chain with the **most accumulated work** is selected as canonical
-- Nodes may reorganize their local chain when a stronger chain is discovered
+Each node maintains a full copy of the blockchain and enforces all consensus rules locally.
 
-Block height is **derived from ancestry**, not enforced by the network.
+Nodes may:
 
-Temporary disagreement is expected and resolved automatically.
+validate blocks independently
 
----
+mine new blocks
 
-## Revelation Block
+relay blocks to peers
 
-The first block (height 0) is referred to as the **Revelation Block**.
+synchronize missing blocks automatically
 
-- It has no parent (`prev_hash = 0x00…00`)
-- It contains a single `revelation_tx` transaction
-- It establishes the initial state of the chain
-- It is deterministic and shared by all nodes
+reorganize when a stronger chain is discovered
 
-Internally, it follows standard genesis mechanics, but is named *Revelation* to emphasize intent rather than tradition.
+Temporary disagreement between nodes is expected and resolves naturally through accumulated proof-of-work.
 
----
+Consensus Rules
 
-## Features
+Consensus follows a Bitcoin-style longest-chain-by-work rule:
 
-- Proof-of-Work mining
-- Fork-capable consensus with reorganization support
-- Merkle-root–based block structure
-- Persistent blockchain and UTXO storage
-- Peer-to-peer networking over raw TCP
-- Automatic block synchronization
-- Optional HTTP API for inspection
-- No central authority or coordinator
+blocks must reference a known parent
 
----
+blocks must satisfy the current proof-of-work difficulty
 
-## Network
+multiple competing chains are permitted
 
-Nodes communicate directly using raw TCP connections.
+the chain with the most accumulated work is selected
 
-### Default Ports
+nodes reorganize automatically when a stronger chain appears
 
-- **8333** – peer-to-peer network
-- **8080** – HTTP status interface (optional)
+Block height is derived from ancestry, not enforced by the network.
 
-> ⚠️ The P2P port is **not HTTP** and should not be opened in a web browser.
+There is no global clock and no checkpoint authority.
 
-When running multiple nodes on the same machine, ensure that:
-- each node uses a different P2P port
-- the HTTP API is either disabled or assigned different ports
+Revelation Block
 
----
+The initial block (height 0) is called the Revelation Block.
 
-## Running a Node
+it has no parent (prev_hash = 0x00…00)
 
-### Build
+it contains a single deterministic transaction
 
-```bash
+it establishes the initial state of the system
+
+Functionally, it serves the role of a genesis block.
+The name is used only to distinguish intent, not behavior.
+
+All nodes share the same Revelation Block.
+
+Monetary Policy
+
+The monetary rules are fixed and enforced by consensus:
+
+block subsidy is height-based
+
+halving schedule is deterministic
+
+total supply is capped at 21 million units
+
+coinbase outputs require maturity before spending
+
+No node may create coins outside these rules.
+
+Features
+
+proof-of-work mining
+
+fork-capable consensus with reorganization
+
+merkle-root–based block structure
+
+persistent blockchain and UTXO storage
+
+peer-to-peer networking over raw TCP
+
+automatic block synchronization
+
+optional HTTP interface for inspection
+
+Network Ports
+
+Default ports:
+
+8333 – peer-to-peer network
+
+8080 – HTTP status interface (optional)
+
+The P2P port is not HTTP and should not be accessed with a web browser.
+
+When running multiple nodes on one machine, each node must use a unique P2P port and data directory.
+
+Running on Mobile (Android / Termux)
+
+A full validating node can be run on a mobile phone using Termux.
+
+This works because the node:
+
+requires no indexes by default
+
+stores minimal state (blocks + UTXOs)
+
+rebuilds all state deterministically
+
+There is no mobile mode.
+A phone running this software is just a node.
+
+Requirements
+
+Android device (ARM64 recommended)
+
+Termux (installed from F-Droid)
+
+~200 MB free storage
+
+Stable internet connection
+
+Termux from Google Play is deprecated. Use the F-Droid version.
+
+1. Install Termux
+
+https://f-droid.org/packages/com.termux/
+
+2. Update Packages
+pkg update && pkg upgrade
+
+3. Install Build Dependencies
+pkg install git rust clang
+
+
+Verify:
+
+rustc --version
+cargo --version
+
+4. Clone the Repository
+git clone https://github.com/Satoshi-Nakamoto-ITL/bitcoin-0.2.git
+cd bitcoin-0.2
+
+5. Build
 cargo build
-Run a single node
+
+6. Run
+cargo run
+
+
+On first run, the node will:
+
+create the Revelation Block
+
+initialize local storage
+
+connect to peers
+
+synchronize the blockchain
+
+Validation behavior is identical to desktop operation.
+
+Building and Running (Desktop)
+Build
+cargo build
+
+Run a Single Node
 cargo run -- --port 8333 --mine
-On startup, the node will:
+
+
+On startup, a node will:
 
 load the local blockchain from disk
 
-create the Revelation block if none exists
+create the Revelation Block if none exists
 
-listen for incoming peer connections
+listen for peer connections
 
 request missing blocks from peers
 
 begin mining once synchronization stabilizes
 
-Running a Private Network (Multiple Nodes)
-Node A (seed / first node)
+Running Multiple Nodes (Private Network)
+Node A
 cargo run -- --port 8333 --data-dir nodeA --mine
-Node B (peer)
+
+Node B
 cargo run -- --port 8334 --data-dir nodeB --peers 127.0.0.1:8333 --mine
-You may run additional nodes by assigning:
 
-a unique --port
 
-a unique --data-dir
+Additional nodes may be started by assigning unique ports and data directories.
 
-Nodes will automatically discover the best chain and resolve forks.
+Nodes converge automatically on the strongest chain.
 
 HTTP Interface
+
 The HTTP API is provided for inspection and development only.
 
-Endpoints
-/status
-Returns chain height, difficulty, and UTXO count
+Example endpoints:
 
-/blocks
-Returns a list of known blocks
+/status – chain height, difficulty, UTXO count
 
-Example
-http://127.0.0.1:8080/status
-http://127.0.0.1:8080/supply
-When running multiple nodes on one machine, only one node should bind to port 8080, or the API port should be changed.
+/blocks – known blocks
+
+/supply – current monetary supply
+
+Only one node should bind to port 8080 on a given machine.
 
 Data Storage
-Blockchain state is stored locally in JSON format.
+
+Blockchain state is stored locally:
 
 data/
 ├── blocks.json
 └── utxos.json
+
+
 Nodes may be stopped and restarted without loss of state.
 
-Consensus Rules (Simplified)
-Blocks must reference a known parent block
+All state can be reconstructed from the chain.
 
-Blocks must satisfy the current proof-of-work difficulty
+Local Search and Indexing
 
-Multiple forks are allowed
+This node does not maintain transaction, address, or block-height indexes by default.
 
-Chains with greater accumulated work are preferred
+The node stores only:
 
-Nodes reorganize automatically when a better chain is found
+the blockchain
 
-Invalid blocks are rejected and not relayed
+the current UTXO set
+
+These are sufficient to:
+
+validate blocks
+
+enforce consensus
+
+mine
+
+synchronize
+
+Search and indexing are policy layers, not consensus requirements.
 
 Limitations
+
 This software is experimental.
 
-It does not currently include:
+It intentionally does not include:
 
-transaction gossip / mempool prioritization
+mandatory indexes
+
+advanced mempool policies
 
 network encryption
 
 denial-of-service protections
 
-fast sync or snapshots
+fast-sync or snapshots
 
-production-grade peer discovery
+production peer discovery
 
-These may be explored in later versions.
+These may be added without altering consensus.
+
+Release Status
+
+This release freezes the consensus rules.
+
+independent network
+
+fixed monetary policy
+
+stable proof-of-work and fork selection
+
+Tag: v0.2-consensus-stable
 
 Purpose
-This project exists to explore and demonstrate the core mechanics of a peer-to-peer proof-of-work system in a clear, compact, and readable form.
 
-It is not intended for production use.
+This project exists to demonstrate that a peer-to-peer proof-of-work system can be implemented clearly, compactly, and without trusted parties.
+
+If the software continues to run unchanged, the rules were sufficient.
 
 License
+
 Open source.
 Free to use, modify, and redistribute.
