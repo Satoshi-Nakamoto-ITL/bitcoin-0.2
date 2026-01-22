@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::crypto::sha256;
+use crate::crypto::{sha256, sign};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TxInput {
@@ -32,5 +32,33 @@ impl Transaction {
             input.signature.clear();
         }
         sha256(&bincode::serialize(&stripped).unwrap())
+    }
+
+    /// 🔑 Spend a matured coinbase UTXO (Bitcoin-accurate)
+    pub fn spend_coinbase(
+        utxo_key: &str,
+        utxo: &crate::utxo::UTXO,
+        miner_key: &str,
+    ) -> Self {
+        let parts: Vec<&str> = utxo_key.split(':').collect();
+        let txid = hex::decode(parts[0]).unwrap();
+        let index = parts[1].parse::<usize>().unwrap();
+
+        let pubkey = miner_key.as_bytes().to_vec();
+        let sighash = sha256(b"coinbase-spend");
+        let signature = sign(miner_key.as_bytes(), &sighash);
+
+        Transaction {
+            inputs: vec![TxInput {
+                txid,
+                index,
+                pubkey,
+                signature,
+            }],
+            outputs: vec![TxOutput {
+                value: utxo.value,
+                pubkey_hash: sha256(miner_key.as_bytes()),
+            }],
+        }
     }
 }

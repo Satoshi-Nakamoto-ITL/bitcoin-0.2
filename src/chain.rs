@@ -102,20 +102,47 @@ impl Blockchain {
         }
     }
 
+    /// 🔍 Find a matured coinbase belonging to this miner
+    pub fn find_matured_coinbase(
+        &self,
+        miner_pubkey_hash: &[u8],
+    ) -> Option<(String, UTXO)> {
+        let height = self.height();
+
+        self.utxos.iter()
+            .find(|(_, u)| {
+                u.pubkey_hash == miner_pubkey_hash
+                    && u.height
+                        .map(|h| height >= h + COINBASE_MATURITY)
+                        .unwrap_or(false)
+            })
+            .map(|(k, v)| (k.clone(), v.clone()))
+    }
+
     pub fn mine_block(&mut self, miner_key: &str) {
         let height = self.height();
         let reward = block_reward(height);
+        let miner_hash = sha256(miner_key.as_bytes());
 
-        let coinbase = Transaction {
+        let mut txs = Vec::new();
+
+        // ⛏ Coinbase
+        txs.push(Transaction {
             inputs: vec![],
             outputs: vec![TxOutput {
                 value: reward,
-                pubkey_hash: sha256(miner_key.as_bytes()),
+                pubkey_hash: miner_hash.clone(),
             }],
-        };
+        });
+
+        // 💸 Spend matured coinbase (if any)
+        if let Some((key, utxo)) = self.find_matured_coinbase(&miner_hash) {
+            let spend_tx =
+                Transaction::spend_coinbase(&key, &utxo, miner_key);
+            txs.push(spend_tx);
+        }
 
         let prev = self.blocks.last().unwrap();
-        let txs = vec![coinbase];
 
         let mut block = Block {
             header: BlockHeader {
