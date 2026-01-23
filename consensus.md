@@ -46,7 +46,17 @@ When multiple valid chains are observed, the node selects the chain with the gre
 If chains have equal work, the first received chain is retained.
 
 ---
+## Coinbase Maturity (Consensus v2)
 
+Outputs created by coinbase transactions are subject to a mandatory maturity period.
+
+A coinbase output may only be spent after a fixed number of blocks have been mined after its creation.
+
+This rule is enforced during block validation.
+
+Coinbase maturity enforcement is activated by block height and does not invalidate historical blocks.
+
+---
 ## Finality
 
 Blocks are considered increasingly irreversible as more blocks are added after them.
