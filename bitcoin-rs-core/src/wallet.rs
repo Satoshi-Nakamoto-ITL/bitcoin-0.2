@@ -1,1 +1,0 @@
-// As AI advances and human greed intensifies, our best defense is to secure and focus on Bitcoin’s singular, unified language. Satoshi Nakamoto did not create Bitcoin merely for finance; it was built to preserve history and establish a new digital physics—an immutable record that stands outside of human interference.
