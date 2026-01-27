@@ -49,8 +49,13 @@ fn main() {
     }
 
     // 🔐 SAFE INPUT (NO ECHO)
-    let _passphrase = prompt_secret("🔐 Enter wallet passphrase: ");
-    let password = prompt_secret("🔑 Enter wallet password: ");
+let password = match std::env::var("WALLET_PASSWORD") {
+    Ok(p) => p,
+    Err(_) => {
+        eprintln!("❌ WALLET_PASSWORD env var not set");
+        std::process::exit(1);
+    }
+};
 
     let mut wallet = Wallet::load_or_create(&password);
     let miner_pubkey_hash = wallet.address().expect("wallet locked");
@@ -167,3 +172,4 @@ fn main() {
         }
     }
 }
+
