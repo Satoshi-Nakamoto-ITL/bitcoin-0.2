@@ -9,6 +9,7 @@ tokio = { version = "1", features = ["full"] }
 axum = "0.7"
 rand = "0.8"
 time = "0.3"
+rpassword = "7.3"
 
 # --- Serialization ---
 serde = { version = "1.0", features = ["derive"] }
@@ -26,6 +27,3 @@ memsec = "0.6"
 num-bigint = "0.4"
 num-traits = "0.2"
 bip39 = "2.0"
-
-
-
