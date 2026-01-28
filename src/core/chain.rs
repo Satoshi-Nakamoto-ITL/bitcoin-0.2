@@ -14,10 +14,10 @@ use std::path::PathBuf;
 use time::OffsetDateTime;
 
 use crate::consensus::{
-    fork_choice::cumulative_work,
     difficulty::calculate_next_target,
     params::*,
 };
+
 
 use crate::{
     block::{Block, BlockHeader},
@@ -38,14 +38,20 @@ const CONSENSUS_V2_HEIGHT: u64 = 1000;
 // ─────────────────────────────────────────────
 
 const GENESIS_TIMESTAMP: i64 = 1730000000;
-const GENESIS_NONCE: u64 = 0; // 🔴 REPLACE
-const GENESIS_TARGET: [u8; 32] = [0xff; 32]; // 🔴 REPLACE if different
+const GENESIS_NONCE: u64 = 0;
+
+const GENESIS_TARGET: [u8; 32] = [
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+];
 
 const GENESIS_MERKLE: &str =
-    "REPLACE_WITH_GENESIS_MERKLE_ROOT_HEX";
+    "a081607fd3b32b29fd4cb46eb5bfe96406aeac0053910e963de67ddd6d10834a";
 
 const GENESIS_HASH: &str =
-    "REPLACE_WITH_GENESIS_HASH_HEX";
+    "66753b6e462295ba651389ba0bac73417fa9d3143bbdba908a95b602d16830aa";
 
 /// 🔥 NON-CONSENSUS ADDITIONS: mempool
 pub struct Blockchain {
@@ -298,56 +304,6 @@ impl Blockchain {
         }
 
         true
-    }
-
-    /* ───────── REORG LOGIC ───────── */
-
-    pub fn maybe_reorg(
-        &mut self,
-        candidate: Vec<Block>,
-    ) -> Option<Vec<Block>> {
-        if !self.validate_chain(&candidate) {
-            return None;
-        }
-
-        if cumulative_work(&candidate)
-            <= cumulative_work(&self.blocks)
-        {
-            return None;
-        }
-
-        let mut fork_height = 0;
-        for i in 0..self.blocks.len().min(candidate.len()) {
-            if self.blocks[i].hash != candidate[i].hash {
-                break;
-            }
-            fork_height = i as u64;
-        }
-
-        let orphaned =
-            self.disconnect_to_height(fork_height);
-
-        self.blocks = candidate;
-        self.rebuild_utxos();
-        self.save_all();
-
-        Some(orphaned)
-    }
-
-    pub fn disconnect_to_height(
-        &mut self,
-        height: u64,
-    ) -> Vec<Block> {
-        let mut orphaned = Vec::new();
-
-        while self.height() > height {
-            if let Some(b) = self.blocks.pop() {
-                orphaned.push(b);
-            }
-        }
-
-        self.rebuild_utxos();
-        orphaned
     }
 
     /* ───────── INIT ───────── */
