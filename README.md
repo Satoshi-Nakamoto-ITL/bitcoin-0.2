@@ -1,4 +1,4 @@
-⛓ Bitcoin v0.3.3 — Revelation Edition  
+## ⛓ Bitcoin v0.3.3 — Revelation Edition  
 
 Stable Node, Wallet, Mining & Public P2P Network
 
@@ -128,3 +128,4 @@ This software is provided as-is for research and independent node operation.
 There is no warranty, no central authority, and no permission system.
 
 ⛓ Satoshi-Nakamoto-ITL
+
