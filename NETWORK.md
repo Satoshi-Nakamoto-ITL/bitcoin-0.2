@@ -40,10 +40,6 @@ Nodes are expected to:
 
 The network does **not** depend on the availability of any specific seed node.
 
----
-
-If you want an even more minimal version (one-liner), here it is:
-
 > **Seed nodes are for bootstrapping only and may be discontinued at any time. Network operation does not depend on any single node.**
 ---
 
