@@ -13,6 +13,7 @@ use axum::{
 };
 
 use crate::chain::Blockchain;
+use crate::reward::block_reward;
 
 const COINBASE_MATURITY: u64 = 100;
 
@@ -39,7 +40,7 @@ pub async fn start_api(chain: Arc<Mutex<Blockchain>>, port: u16) {
 }
 
 //
-// ─── STATUS ─────────────────────────────────────────
+// ─── STATUS (FIXED, HONEST) ───────────────────────
 //
 
 #[derive(Serialize)]
@@ -49,7 +50,13 @@ struct StatusResponse {
     utxos: usize,
     mempool: usize,
 
-    total_mined: u64,
+    // 🔒 CONSENSUS TRUTH
+    total_issued: u64,
+
+    // 🔒 LEDGER STATE
+    utxo_supply: u64,
+
+    // 🔒 ECONOMIC REALITY
     circulating_supply: u64,
 }
 
@@ -57,14 +64,23 @@ async fn status(State(state): State<AppState>) -> Json<StatusResponse> {
     let c = state.chain.lock().unwrap();
     let height = c.height();
 
-    let mut total_mined = 0u64;
+    // 1️⃣ TOTAL ISSUED (historical, independent of UTXOs)
+    let mut total_issued = 0u64;
+    for b in &c.blocks {
+        total_issued = total_issued.saturating_add(
+            block_reward(b.header.height)
+        );
+    }
+
+    // 2️⃣ UTXO SUPPLY (current ledger state)
+    let mut utxo_supply = 0u64;
     let mut circulating = 0u64;
 
     for u in c.utxos.values() {
-        total_mined += u.value;
+        utxo_supply = utxo_supply.saturating_add(u.value);
 
         if !u.is_coinbase || height >= u.height + COINBASE_MATURITY {
-            circulating += u.value;
+            circulating = circulating.saturating_add(u.value);
         }
     }
 
@@ -73,13 +89,15 @@ async fn status(State(state): State<AppState>) -> Json<StatusResponse> {
         blocks: c.blocks.len(),
         utxos: c.utxos.len(),
         mempool: c.mempool.len(),
-        total_mined,
+
+        total_issued,
+        utxo_supply,
         circulating_supply: circulating,
     })
 }
 
 //
-// ─── BLOCKS ─────────────────────────────────────────
+// ─── BLOCKS ───────────────────────────────────────
 //
 
 #[derive(Serialize)]
@@ -120,7 +138,7 @@ async fn block_by_height(
 }
 
 //
-// ─── TRANSACTIONS ───────────────────────────────────
+// ─── TRANSACTIONS ─────────────────────────────────
 //
 
 #[derive(Serialize)]
@@ -151,7 +169,7 @@ async fn tx_by_id(
 }
 
 //
-// ─── NEW TRANSACTION (MEMPOOL) ─────────────────────
+// ─── NEW TRANSACTION (MEMPOOL) ────────────────────
 //
 
 #[derive(Deserialize)]
@@ -196,7 +214,7 @@ async fn new_transaction(
 }
 
 //
-// ─── ADDRESS INFO ───────────────────────────────────
+// ─── ADDRESS INFO ─────────────────────────────────
 //
 
 #[derive(Serialize)]
@@ -245,7 +263,7 @@ async fn address_info(
 }
 
 //
-// ─── HELPER ─────────────────────────────────────────
+// ─── HELPER ───────────────────────────────────────
 //
 
 fn hex(bytes: &[u8]) -> String {
