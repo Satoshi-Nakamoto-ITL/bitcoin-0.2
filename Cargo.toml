@@ -27,3 +27,8 @@ memsec = "0.6"
 num-bigint = "0.4"
 num-traits = "0.2"
 bip39 = "2.0"
+
+# --- Bluetooth (BLE) ---
+btleplug = "0.11"
+uuid = "1.7"
+futures = "0.3"

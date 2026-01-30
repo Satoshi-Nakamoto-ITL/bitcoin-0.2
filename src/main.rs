@@ -9,9 +9,14 @@ use std::net::SocketAddr;
 use tokio::runtime::Runtime;
 use rpassword::read_password;
 
-// Import from the LIB crate
+// ───────── Imports from the LIB crate ─────────
 use bitcoin_v0_2_revelation::core::chain::Blockchain;
-use bitcoin_v0_2_revelation::node::network::P2PNetwork;
+use bitcoin_v0_2_revelation::node::p2p::P2PNetwork;
+use bitcoin_v0_2_revelation::node::transport::tcp::TcpTransport;
+use bitcoin_v0_2_revelation::node::transport::satellite::SatelliteTransport;
+use bitcoin_v0_2_revelation::node::transport::bluetooth::BluetoothTransport;
+use bitcoin_v0_2_revelation::node::transport::geo::GeoTransport;
+use bitcoin_v0_2_revelation::node::dedup::MessageDeduplicator;
 use bitcoin_v0_2_revelation::interface::{api::start_api, cli};
 use bitcoin_v0_2_revelation::node::mempool::Mempool;
 use bitcoin_v0_2_revelation::wallet::Wallet;
@@ -24,20 +29,15 @@ enum NodeMode {
     Normal,
 }
 
-/// 🔒 secure password input
+/// 🔒 Secure password input
 fn prompt_secret(msg: &str) -> String {
     print!("{}", msg);
     io::stdout().flush().unwrap();
     read_password().unwrap()
 }
 
-/// ─────────────────────────────────────────────
-/// 🌱 BOOTSTRAP SEED NODES (NON-CONSENSUS)
-/// These are ONLY for initial peer discovery.
-/// Safe to change, remove, or rotate.
-/// ─────────────────────────────────────────────
+/// 🌱 Bootstrap seeds (non-consensus)
 const BOOTSTRAP_SEEDS: &[&str] = &[
-    // Fly.io seed (replace with your app name)
     "bitcoin-revelation-node.fly.dev:8333",
 ];
 
@@ -83,7 +83,7 @@ fn main() {
         return;
     }
 
-    // ───────── API Server (Explorer) ─────────
+    // ───────── API Server ─────────
     let api_chain = Arc::clone(&chain);
     thread::spawn(move || {
         let rt = Runtime::new().expect("Tokio runtime failed");
@@ -92,20 +92,74 @@ fn main() {
 
     println!("🌐 Explorer running at http://127.0.0.1:8080");
 
-    // ───────── P2P Network (PUBLIC) ─────────
-    let p2p = P2PNetwork::new(Arc::clone(&chain));
-    println!("🔗 P2P listening on {}", p2p.local_addr());
+    // ───────── P2P BOOTSTRAP ─────────
 
-    // ───────── Auto-connect to bootstrap seeds ─────────
+    // Break circular ownership
+    let p2p_holder: Arc<Mutex<Option<Arc<P2PNetwork>>>> =
+        Arc::new(Mutex::new(None));
+
+    // Message deduplication
+    let dedup = Arc::new(Mutex::new(
+        MessageDeduplicator::new(Duration::from_secs(60))
+    ));
+
+    // Unified receive callback for ALL transports
+    let on_receive = Arc::new({
+        let p2p_holder = Arc::clone(&p2p_holder);
+        let dedup = Arc::clone(&dedup);
+
+        move |addr: SocketAddr, data: Vec<u8>| {
+            let is_new = {
+                let mut d = dedup.lock().unwrap();
+                d.check_and_insert(&data)
+            };
+
+            if !is_new {
+                return; // drop duplicate silently
+            }
+
+            if let Some(p2p) = &*p2p_holder.lock().unwrap() {
+                p2p.on_receive(addr, data);
+            }
+        }
+    });
+
+    // ───────── TCP Transport ─────────
+    let transport = TcpTransport::new("0.0.0.0:0", on_receive.clone());
+
+    let p2p = Arc::new(
+        P2PNetwork::new(transport.clone(), Arc::clone(&chain))
+    );
+
+    *p2p_holder.lock().unwrap() = Some(Arc::clone(&p2p));
+
+    println!("🔗 P2P TCP transport initialized");
+
+    // ───────── Satellite Transport (receive-only) ─────────
+    SatelliteTransport::listen_udp("0.0.0.0:9999", on_receive.clone());
+    // SatelliteTransport::listen_file("satellite.dat", on_receive.clone());
+
+    // ───────── GEO / LAN Mesh ─────────
+    GeoTransport::start("0.0.0.0:9333", on_receive.clone());
+
+    // ───────── Bluetooth BLE (async) ─────────
+    {
+        let on_receive = on_receive.clone();
+        thread::spawn(move || {
+            let rt = Runtime::new().unwrap();
+            rt.block_on(BluetoothTransport::start(on_receive));
+        });
+    }
+
+    // ───────── Connect bootstrap seeds ─────────
     for seed in BOOTSTRAP_SEEDS {
         if let Ok(addr) = seed.parse::<SocketAddr>() {
             println!("🌱 Connecting to seed {}", seed);
-            p2p.connect(addr);
+            transport.connect(addr);
         }
     }
 
     println!("🔄 Requesting sync from peers");
-    p2p.request_sync();
 
     // ───────── Node Loop ─────────
     let mut mode = NodeMode::Syncing;
@@ -153,14 +207,14 @@ fn main() {
 
                 if accepted {
                     p2p.broadcast_block(&candidate_block);
+
                     mempool
                         .lock()
                         .unwrap()
                         .remove_confirmed(&candidate_block.transactions);
 
                     let c = chain.lock().unwrap();
-                    let balance: u64 = c
-                        .utxos
+                    let balance: u64 = c.utxos
                         .values()
                         .filter(|u| u.pubkey_hash == miner_pubkey_hash)
                         .map(|u| u.value)
