@@ -20,8 +20,11 @@ use crate::{
     transaction::{Transaction, TxInput, TxOutput},
     revelation::revelation_tx,
     merkle::merkle_root,
-    
 };
+
+// ─────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────
 
 #[allow(dead_code)]
 const COINBASE_MATURITY: u64 = 100;
@@ -41,8 +44,13 @@ const GENESIS_TARGET: [u8; 32] = [0xff; 32];
 const GENESIS_MERKLE: &str =
     "a081607fd3b32b29fd4cb46eb5bfe96406aeac0053910e963de67ddd6d10834a";
 
+// ⚠️ THIS VALUE IS CURRENTLY WRONG — WILL BE REPLACED
 const GENESIS_HASH: &str =
     "66753b6e462295ba651389ba0bac73417fa9d3143bbdba908a95b602d16830aa";
+
+// ─────────────────────────────────────────────
+// Blockchain struct
+// ─────────────────────────────────────────────
 
 pub struct Blockchain {
     pub blocks: Vec<Block>,
@@ -50,7 +58,9 @@ pub struct Blockchain {
     pub mempool: Vec<Transaction>,
 }
 
-/* ───────── Wallet layer (NON-CONSENSUS) ───────── */
+// ─────────────────────────────────────────────
+// Wallet layer (NON-CONSENSUS)
+// ─────────────────────────────────────────────
 
 impl Blockchain {
     pub fn create_transaction(
@@ -112,7 +122,9 @@ impl Blockchain {
     }
 }
 
-/* ───────── Consensus logic ───────── */
+// ─────────────────────────────────────────────
+// Consensus logic
+// ─────────────────────────────────────────────
 
 fn data_dir() -> PathBuf {
     let mut path = env::current_exe().unwrap();
@@ -134,8 +146,12 @@ fn utxos_file() -> PathBuf {
 }
 
 fn median_time_past(chain: &[Block]) -> i64 {
-    let mut times: Vec<i64> = chain.iter().rev().take(MTP_WINDOW)
-        .map(|b| b.header.timestamp).collect();
+    let mut times: Vec<i64> = chain
+        .iter()
+        .rev()
+        .take(MTP_WINDOW)
+        .map(|b| b.header.timestamp)
+        .collect();
     times.sort();
     times[times.len() / 2]
 }
@@ -220,7 +236,17 @@ impl Blockchain {
                 hash: hex::decode(GENESIS_HASH).unwrap(),
             };
 
-            assert!(genesis.hash == genesis.hash_header());
+            let computed = genesis.hash_header();
+
+            println!("🔴 GENESIS MISMATCH DETECTED");
+            println!("Hardcoded genesis hash : {}", hex::encode(&genesis.hash));
+            println!("Computed genesis hash  : {}", hex::encode(&computed));
+
+            assert!(
+                genesis.hash == computed,
+                "Genesis hash constant does not match computed header hash"
+            );
+
             assert!(genesis.verify_pow());
 
             self.blocks.push(genesis);
@@ -232,9 +258,11 @@ impl Blockchain {
 
     pub fn rebuild_utxos(&mut self) {
         self.utxos.clear();
+
         for block in &self.blocks {
             for (tx_index, tx) in block.transactions.iter().enumerate() {
                 let txid = hex::encode(tx.txid());
+
                 for input in &tx.inputs {
                     self.utxos.remove(&format!(
                         "{}:{}",
@@ -244,6 +272,7 @@ impl Blockchain {
                 }
 
                 let is_coinbase = tx_index == 0 && tx.inputs.is_empty();
+
                 for (i, o) in tx.outputs.iter().enumerate() {
                     self.utxos.insert(
                         format!("{}:{}", txid, i),
@@ -261,9 +290,17 @@ impl Blockchain {
 
     pub fn save_all(&self) {
         fs::create_dir_all(data_dir()).unwrap();
-        fs::write(blocks_file(),
-            serde_json::to_string_pretty(&self.blocks).unwrap()).unwrap();
-        fs::write(utxos_file(),
-            serde_json::to_string_pretty(&self.utxos).unwrap()).unwrap();
+
+        fs::write(
+            blocks_file(),
+            serde_json::to_string_pretty(&self.blocks).unwrap(),
+        )
+        .unwrap();
+
+        fs::write(
+            utxos_file(),
+            serde_json::to_string_pretty(&self.utxos).unwrap(),
+        )
+        .unwrap();
     }
 }
