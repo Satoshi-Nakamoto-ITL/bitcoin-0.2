@@ -34,7 +34,8 @@ uuid = "1.7"
 futures = "0.3"
 
 # --- Android ---
-jni = { version = "0.21.1", default-features = false }
+jni = { version = "0.19.1", default-features = false }
+
 
 
 
