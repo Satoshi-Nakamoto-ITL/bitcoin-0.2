@@ -22,10 +22,6 @@ use crate::{
     merkle::merkle_root,
 };
 
-// ─────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────
-
 #[allow(dead_code)]
 const COINBASE_MATURITY: u64 = 100;
 const _CONSENSUS_V2_HEIGHT: u64 = 1000;
@@ -44,13 +40,9 @@ const GENESIS_TARGET: [u8; 32] = [0xff; 32];
 const GENESIS_MERKLE: &str =
     "a081607fd3b32b29fd4cb46eb5bfe96406aeac0053910e963de67ddd6d10834a";
 
-// ⚠️ THIS VALUE IS CURRENTLY WRONG — WILL BE REPLACED
+// ✅ FINAL, VERIFIED GENESIS HASH
 const GENESIS_HASH: &str =
-    "66753b6e462295ba651389ba0bac73417fa9d3143bbdba908a95b602d16830aa";
-
-// ─────────────────────────────────────────────
-// Blockchain struct
-// ─────────────────────────────────────────────
+    "8bdfff36f8f80e042e85770768df64f95b61f9e5f5128f4e49955bce3e902a1d";
 
 pub struct Blockchain {
     pub blocks: Vec<Block>,
@@ -58,9 +50,7 @@ pub struct Blockchain {
     pub mempool: Vec<Transaction>,
 }
 
-// ─────────────────────────────────────────────
-// Wallet layer (NON-CONSENSUS)
-// ─────────────────────────────────────────────
+/* ───────── Wallet layer (NON-CONSENSUS) ───────── */
 
 impl Blockchain {
     pub fn create_transaction(
@@ -122,9 +112,7 @@ impl Blockchain {
     }
 }
 
-// ─────────────────────────────────────────────
-// Consensus logic
-// ─────────────────────────────────────────────
+/* ───────── Consensus logic ───────── */
 
 fn data_dir() -> PathBuf {
     let mut path = env::current_exe().unwrap();
@@ -152,6 +140,7 @@ fn median_time_past(chain: &[Block]) -> i64 {
         .take(MTP_WINDOW)
         .map(|b| b.header.timestamp)
         .collect();
+
     times.sort();
     times[times.len() / 2]
 }
@@ -196,7 +185,8 @@ impl Blockchain {
                 return false;
             }
             if block.header.timestamp >
-                OffsetDateTime::now_utc().unix_timestamp() + MAX_FUTURE_DRIFT {
+                OffsetDateTime::now_utc().unix_timestamp() + MAX_FUTURE_DRIFT
+            {
                 return false;
             }
         }
@@ -236,18 +226,15 @@ impl Blockchain {
                 hash: hex::decode(GENESIS_HASH).unwrap(),
             };
 
-            let computed = genesis.hash_header();
-
-            println!("🔴 GENESIS MISMATCH DETECTED");
-            println!("Hardcoded genesis hash : {}", hex::encode(&genesis.hash));
-            println!("Computed genesis hash  : {}", hex::encode(&computed));
-
+            // 🔒 CONSENSUS INVARIANTS
             assert!(
-                genesis.hash == computed,
+                genesis.hash == genesis.hash_header(),
                 "Genesis hash constant does not match computed header hash"
             );
-
-            assert!(genesis.verify_pow());
+            assert!(
+                genesis.verify_pow(),
+                "Genesis block does not satisfy Proof-of-Work"
+            );
 
             self.blocks.push(genesis);
         }
