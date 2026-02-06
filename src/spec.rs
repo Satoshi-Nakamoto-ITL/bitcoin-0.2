@@ -1,7 +1,7 @@
 //! ⛓ Bitcoin Revelation — Consensus Specification v1.0
 //!
 //! Status: FINAL / FROZEN
-//! Consensus Version: v3
+//! Consensus Version: v4
 //!
 //! This file defines ALL consensus-critical rules.
 //! Any change to this file constitutes a HARD FORK.
@@ -172,6 +172,9 @@
 /// Finality
 /// ─────────────────────────────────────────────
 ///
-/// Consensus v3 is FINAL and FROZEN.
-/// Any change requires a new consensus version
-/// and explicit hard fork.
+/// Consensus v4 is FINAL and FROZEN.
+///
+/// Any change requires:
+/// - a new consensus version
+/// - explicit hard fork
+/// - independent node adoption
