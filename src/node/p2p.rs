@@ -46,7 +46,7 @@ impl P2PNetwork {
         match msg {
             NetworkMessage::Hello { version, height, .. } => {
                 println!("> [NET] Handshake request from {} (Height: {})", addr, height);
-                
+
                 if version != PROTOCOL_VERSION {
                     println!("> [DENY] Protocol mismatch with {}", addr);
                     return;
@@ -87,11 +87,24 @@ impl P2PNetwork {
         }
     }
 
-    /// Helper function to send messages
+    /// Helper function to send messages to a single peer
     fn send(&self, addr: SocketAddr, msg: &NetworkMessage) {
         if let Ok(data) = bincode::serialize(msg) {
             self.transport.send(&addr, &data);
         }
     }
-}
 
+    /// ✅ FIX: Broadcast a newly mined block to all peers
+    pub fn broadcast_block(&self, block: &Block) {
+        println!(
+            "> [NET] Broadcasting block at height {}",
+            block.header.height
+        );
+
+        let msg = NetworkMessage::Block(block.clone());
+
+        if let Ok(data) = bincode::serialize(&msg) {
+            self.transport.broadcast(&data);
+        }
+    }
+}
