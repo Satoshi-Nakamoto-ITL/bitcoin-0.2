@@ -1,6 +1,6 @@
 [package]
 name = "bitcoin_v0_2_revelation"
-version = "0.3.3"
+version = "0.4.1"
 edition = "2021"
 
 [dependencies]
@@ -28,7 +28,11 @@ num-bigint = "0.4"
 num-traits = "0.2"
 bip39 = "2.0"
 
-# --- Bluetooth (BLE) ---
-btleplug = "0.11"
-uuid = "1.7"
-futures = "0.3"
+# --- Utilities ---
+uuid = "1.7"      # harmless, pure Rust
+futures = "0.3"   # async helpers, no JNI
+
+# --- features ---
+[features]
+bluetooth = []
+default = []

@@ -1,7 +1,12 @@
 use crate::core::block::Block;
 
 /// Consensus PoW rule:
-/// hash <= target (numeric comparison)
+///
+/// - hash and target are 32-byte BIG-ENDIAN values
+/// - numeric comparison is lexicographic
+/// - hash <= target is VALID
+///
+/// ⚠️ CHANGING ENDIANNESS WILL FORK THE CHAIN
 pub fn valid_pow(hash: &[u8], target: &[u8; 32]) -> bool {
     if hash.len() != 32 {
         return false;
@@ -13,7 +18,6 @@ pub fn valid_pow(hash: &[u8], target: &[u8; 32]) -> bool {
     h <= *target
 }
 
-/// Mining loop — modifies nonce until PoW is satisfied
 pub fn mine(block: &mut Block) {
     loop {
         let hash = block.hash_header();

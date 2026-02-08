@@ -3,7 +3,6 @@ use std::path::Path;
 use std::time::Instant;
 
 use rand::{rngs::OsRng, RngCore};
-use zeroize::Zeroize;
 use memsec::mlock;
 
 use aes_gcm::{
@@ -14,9 +13,7 @@ use aes_gcm::aead::generic_array::GenericArray;
 
 use sha2::{Sha256, Digest};
 use pbkdf2::pbkdf2_hmac;
-
 use bip39::{Mnemonic, Language};
-use hex;
 
 use crate::crypto::{
     secret_key_from_seed,
@@ -27,9 +24,6 @@ use crate::crypto::{
 
 use crate::core::transaction::{Transaction, TxInput, TxOutput};
 use crate::core::utxo::UTXOSet;
-
-const WALLET_FILE: &str = "data/wallet.dat";
-const COINBASE_MATURITY: u64 = 100;
 
 /* ───────── Encrypted Wallet File ───────── */
 
@@ -71,64 +65,20 @@ pub struct Wallet {
     next_index: u32,
 }
 
-/* ───────── Balance Struct (UI ONLY) ───────── */
-
-pub struct WalletBalance {
-    pub total: u64,
-    pub spendable: u64,
-    pub locked: u64,
-}
-
-pub fn calculate_wallet_balance(
-    utxos: &UTXOSet,
-    my_pubkey_hash: &[u8],
-    current_height: u64,
-) -> WalletBalance {
-    let mut total = 0;
-    let mut spendable = 0;
-    let mut locked = 0;
-
-    for u in utxos.values() {
-        if u.pubkey_hash != my_pubkey_hash {
-            continue;
-        }
-
-        total += u.value;
-
-        if !u.is_coinbase {
-            spendable += u.value;
-        } else if current_height >= u.height + COINBASE_MATURITY {
-            spendable += u.value;
-        } else {
-            locked += u.value;
-        }
-    }
-
-    WalletBalance { total, spendable, locked }
-}
-
 /* ───────── Wallet Impl ───────── */
 
 impl Wallet {
     pub fn load_or_create(password: &str) -> Self {
         fs::create_dir_all("data").unwrap();
 
-        if Path::new(WALLET_FILE).exists() {
+        if Path::new("data/wallet.dat").exists() {
             let mut w = Wallet {
                 master_seed: None,
                 last_unlock: None,
                 next_index: 0,
             };
 
-            if let Err(_) = w.unlock(password) {
-                eprintln!("❌ Wallet unlock failed.");
-                eprintln!("Possible reasons:");
-                eprintln!("• Incorrect password");
-                eprintln!("• Wallet was created with a different passphrase");
-                eprintln!("• Wallet file is corrupted");
-                std::process::exit(1);
-            }
-
+            w.unlock(password).expect("wallet unlock failed");
             w
         } else {
             Self::create_new(password)
@@ -139,11 +89,12 @@ impl Wallet {
         let mut entropy = [0u8; 16];
         OsRng.fill_bytes(&mut entropy);
 
-        let mnemonic = Mnemonic::from_entropy_in(Language::English, &entropy)
-            .expect("mnemonic generation failed");
+        let mnemonic =
+            Mnemonic::from_entropy_in(Language::English, &entropy)
+                .expect("mnemonic generation failed");
 
         println!("\n⚠️ WRITE THIS DOWN — WALLET RECOVERY PHRASE ⚠️");
-        println!("{}", mnemonic.to_string());
+        println!("{}", mnemonic);
         println!("⚠️ ANYONE WITH THESE WORDS CAN SPEND YOUR COINS ⚠️\n");
 
         Self::create_from_mnemonic(password, &mnemonic.to_string())
@@ -154,20 +105,21 @@ impl Wallet {
         password: &str,
         mnemonic_phrase: &str,
     ) -> Result<Self, &'static str> {
-        let mnemonic = Mnemonic::parse_in_normalized(Language::English, mnemonic_phrase)
-            .map_err(|_| "invalid mnemonic")?;
+        let mnemonic =
+            Mnemonic::parse_in_normalized(Language::English, mnemonic_phrase)
+                .map_err(|_| "invalid mnemonic")?;
 
         let seed = mnemonic.to_seed("");
         let mut master_seed = [0u8; 32];
         master_seed.copy_from_slice(&seed[..32]);
 
-        let mut password_salt = [0u8; 16];
-        OsRng.fill_bytes(&mut password_salt);
+        let mut salt = [0u8; 16];
+        OsRng.fill_bytes(&mut salt);
 
         let mut enc_key = [0u8; 32];
         pbkdf2_hmac::<Sha256>(
             password.as_bytes(),
-            &password_salt,
+            &salt,
             300_000,
             &mut enc_key,
         );
@@ -177,19 +129,19 @@ impl Wallet {
         let mut nonce = [0u8; 12];
         OsRng.fill_bytes(&mut nonce);
 
-        let encrypted_master_seed = cipher
+        let encrypted = cipher
             .encrypt(GenericArray::from_slice(&nonce), &master_seed[..])
-            .map_err(|_| "seed encryption failed")?;
+            .map_err(|_| "encryption failed")?;
 
         let wf = WalletFile {
             version: 3,
-            encrypted_master_seed,
-            password_salt: password_salt.to_vec(),
+            encrypted_master_seed: encrypted,
+            password_salt: salt.to_vec(),
             nonce: nonce.to_vec(),
             next_index: 0,
         };
 
-        fs::write(WALLET_FILE, bincode::serialize(&wf).unwrap()).unwrap();
+        fs::write("data/wallet.dat", bincode::serialize(&wf).unwrap()).unwrap();
         lock_memory(&mut master_seed);
 
         Ok(Wallet {
@@ -200,7 +152,7 @@ impl Wallet {
     }
 
     pub fn unlock(&mut self, password: &str) -> Result<(), ()> {
-        let data = fs::read(WALLET_FILE).map_err(|_| ())?;
+        let data = fs::read("data/wallet.dat").map_err(|_| ())?;
         let wf: WalletFile = bincode::deserialize(&data).map_err(|_| ())?;
 
         let mut enc_key = [0u8; 32];
@@ -213,7 +165,7 @@ impl Wallet {
 
         let cipher = Aes256Gcm::new(GenericArray::from_slice(&enc_key));
 
-        let seed_bytes = cipher
+        let seed = cipher
             .decrypt(
                 GenericArray::from_slice(&wf.nonce),
                 wf.encrypted_master_seed.as_ref(),
@@ -221,8 +173,7 @@ impl Wallet {
             .map_err(|_| ())?;
 
         let mut master_seed = [0u8; 32];
-        master_seed.copy_from_slice(&seed_bytes[..32]);
-
+        master_seed.copy_from_slice(&seed[..32]);
         lock_memory(&mut master_seed);
 
         self.master_seed = Some(master_seed);
@@ -230,13 +181,6 @@ impl Wallet {
         self.next_index = wf.next_index;
 
         Ok(())
-    }
-
-    pub fn lock(&mut self) {
-        if let Some(mut s) = self.master_seed.take() {
-            s.zeroize();
-        }
-        self.last_unlock = None;
     }
 
     pub fn address(&self) -> Result<Vec<u8>, &'static str> {
@@ -250,27 +194,27 @@ impl Wallet {
     pub fn create_transaction(
         &mut self,
         utxos: &UTXOSet,
-        to_pubkey_hash: Vec<u8>,
+        to: Vec<u8>,
         amount: u64,
+        _current_height: u64,
     ) -> Result<Transaction, &'static str> {
-        let master_seed = self.master_seed.ok_or("wallet locked")?;
+        let master = self.master_seed.ok_or("wallet locked")?;
 
         let mut collected = 0u64;
-        let mut selected = Vec::new();
+        let mut inputs = Vec::new();
 
         for (key, utxo) in utxos {
             for index in 0..20 {
-                let child = derive_child_seed(&master_seed, index);
+                let child = derive_child_seed(&master, index);
                 let sk = secret_key_from_seed(&child);
                 let pk = public_key(&sk);
-                let hash = pubkey_hash(&pk);
 
-                if hash == utxo.pubkey_hash {
+                if pubkey_hash(&pk) == utxo.pubkey_hash {
                     let parts: Vec<&str> = key.split(':').collect();
                     let txid = hex::decode(parts[0]).unwrap();
-                    let vout = parts[1].parse::<u32>().unwrap();
+                    let vout = parts[1].parse().unwrap();
 
-                    selected.push((txid, vout, index, utxo.value));
+                    inputs.push((txid, vout, index, utxo.value));
                     collected += utxo.value;
 
                     if collected >= amount {
@@ -284,20 +228,18 @@ impl Wallet {
         }
 
         if collected < amount {
-            return Err("not enough funds");
+            return Err("insufficient funds");
         }
 
         let mut outputs = vec![TxOutput {
             value: amount,
-            pubkey_hash: to_pubkey_hash,
+            pubkey_hash: to,
         }];
 
-        let change = collected - amount;
-        if change > 0 {
-            let change_addr = self.address()?;
+        if collected > amount {
             outputs.push(TxOutput {
-                value: change,
-                pubkey_hash: change_addr,
+                value: collected - amount,
+                pubkey_hash: self.address()?,
             });
         }
 
@@ -308,19 +250,15 @@ impl Wallet {
 
         let sighash = tx.sighash();
 
-        for (txid, vout, index, _) in selected {
-            let sig = sign(
-                &sighash,
-                &secret_key_from_seed(&derive_child_seed(&master_seed, index)),
-            );
-            let pk = public_key(&secret_key_from_seed(
-                &derive_child_seed(&master_seed, index),
-            ));
+        for (txid, vout, index, _) in inputs {
+            let child = derive_child_seed(&master, index);
+            let sk = secret_key_from_seed(&child);
+            let pk = public_key(&sk);
 
             tx.inputs.push(TxInput {
                 txid,
                 index: vout,
-                signature: sig,
+                signature: sign(&sighash, &sk),
                 pubkey: pk.serialize().to_vec(),
                 address_index: index,
             });

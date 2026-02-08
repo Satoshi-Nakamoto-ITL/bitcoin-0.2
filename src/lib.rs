@@ -22,4 +22,4 @@ pub use core::chain;
 
 pub use crypto::{sha256, pubkey_hash, verify_signature};
 
-pub const CLIENT_VERSION: &str = "0.4.0-consensus-v4";
+pub const CLIENT_VERSION: &str = "0.4.1-consensus-v5";

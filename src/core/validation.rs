@@ -1,15 +1,15 @@
-use super::transaction::Transaction;
-use super::utxo::UTXOSet;
-use crate::crypto::{verify_signature, pubkey_hash};
+use std::collections::HashSet;
 
 use secp256k1::PublicKey;
-use std::collections::HashSet;
+
+use crate::core::transaction::Transaction;
+use crate::core::utxo::UTXOSet;
+use crate::crypto::{verify_signature, pubkey_hash};
 
 const COINBASE_MATURITY: u64 = 100;
 
-/// ⚠️ CONSENSUS — MUST NOT CHANGE WITHOUT A VERSIONED FORK
-///
-/// Transaction validation rules enforced by consensus.
+/// ⚠️ CONSENSUS — v4 / v5
+/// Transaction validation rules
 pub fn validate_transaction(
     tx: &Transaction,
     utxos: &UTXOSet,
@@ -27,7 +27,11 @@ pub fn validate_transaction(
     let mut seen_outpoints = HashSet::new();
 
     for input in &tx.inputs {
-        let key = format!("{}:{}", hex::encode(&input.txid), input.index);
+        let key = format!(
+            "{}:{}",
+            hex::encode(&input.txid),
+            input.index
+        );
 
         // Prevent same-UTXO double spend inside tx
         if !seen_outpoints.insert(key.clone()) {

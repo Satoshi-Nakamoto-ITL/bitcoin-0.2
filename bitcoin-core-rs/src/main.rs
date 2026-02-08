@@ -14,6 +14,7 @@ use bitcoin_v0_2_revelation::core::chain::Blockchain;
 use bitcoin_v0_2_revelation::node::p2p::P2PNetwork;
 use bitcoin_v0_2_revelation::node::transport::tcp::TcpTransport;
 use bitcoin_v0_2_revelation::node::transport::satellite::SatelliteTransport;
+#[cfg(feature = "bluetooth")]
 use bitcoin_v0_2_revelation::node::transport::bluetooth::BluetoothTransport;
 use bitcoin_v0_2_revelation::node::transport::geo::GeoTransport;
 use bitcoin_v0_2_revelation::node::dedup::MessageDeduplicator;
@@ -42,9 +43,8 @@ const BOOTSTRAP_SEEDS: &[&str] = &[
 ];
 
 fn main() {
-    println!("⛓ Bitcoin v0.3.3 — Revelation Edition (Consensus v3)");
+    println!("⛓ Bitcoin v0.4.1 — Revelation Edition (Consensus v5)");
 
-    // ───────── Wallet & Miner Config ─────────
     let wallet_store = load_wallet_store();
     let miner_config = load_miner_config();
 
@@ -64,26 +64,18 @@ fn main() {
         hex::encode(&miner_pubkey_hash)
     );
 
-    // ───────── Blockchain ─────────
     let mut local_chain = Blockchain::new();
     local_chain.initialize();
 
     let chain = Arc::new(Mutex::new(local_chain));
     let mempool = Arc::new(Mutex::new(Mempool::new()));
 
-    // ───────── CLI MODE ─────────
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && args[1] == "wallet" {
-        cli::handle_command(
-            args,
-            &mut wallet,
-            Arc::clone(&chain),
-            Arc::clone(&mempool),
-        );
+        cli::handle_command(args, &mut wallet, Arc::clone(&chain), Arc::clone(&mempool));
         return;
     }
 
-    // ───────── API Server ─────────
     let api_chain = Arc::clone(&chain);
     thread::spawn(move || {
         let rt = Runtime::new().expect("Tokio runtime failed");
@@ -92,18 +84,13 @@ fn main() {
 
     println!("🌐 Explorer running at http://127.0.0.1:8080");
 
-    // ───────── P2P BOOTSTRAP ─────────
-
-    // Break circular ownership
     let p2p_holder: Arc<Mutex<Option<Arc<P2PNetwork>>>> =
         Arc::new(Mutex::new(None));
 
-    // Message deduplication
     let dedup = Arc::new(Mutex::new(
         MessageDeduplicator::new(Duration::from_secs(60))
     ));
 
-    // Unified receive callback for ALL transports
     let on_receive = Arc::new({
         let p2p_holder = Arc::clone(&p2p_holder);
         let dedup = Arc::clone(&dedup);
@@ -115,7 +102,7 @@ fn main() {
             };
 
             if !is_new {
-                return; // drop duplicate silently
+                return;
             }
 
             if let Some(p2p) = &*p2p_holder.lock().unwrap() {
@@ -124,7 +111,6 @@ fn main() {
         }
     });
 
-    // ───────── TCP Transport ─────────
     let transport = TcpTransport::new("0.0.0.0:0", on_receive.clone());
 
     let p2p = Arc::new(
@@ -135,14 +121,11 @@ fn main() {
 
     println!("🔗 P2P TCP transport initialized");
 
-    // ───────── Satellite Transport (receive-only) ─────────
     SatelliteTransport::listen_udp("0.0.0.0:9999", on_receive.clone());
-    // SatelliteTransport::listen_file("satellite.dat", on_receive.clone());
-
-    // ───────── GEO / LAN Mesh ─────────
     GeoTransport::start("0.0.0.0:9333", on_receive.clone());
 
-    // ───────── Bluetooth BLE (async) ─────────
+    // ✅ Bluetooth ONLY when feature is enabled
+    #[cfg(feature = "bluetooth")]
     {
         let on_receive = on_receive.clone();
         thread::spawn(move || {
@@ -151,7 +134,6 @@ fn main() {
         });
     }
 
-    // ───────── Connect bootstrap seeds ─────────
     for seed in BOOTSTRAP_SEEDS {
         if let Ok(addr) = seed.parse::<SocketAddr>() {
             println!("🌱 Connecting to seed {}", seed);
@@ -161,7 +143,6 @@ fn main() {
 
     println!("🔄 Requesting sync from peers");
 
-    // ───────── Node Loop ─────────
     let mut mode = NodeMode::Syncing;
     let mut last_height = chain.lock().unwrap().height();
     let mut last_change = Instant::now();

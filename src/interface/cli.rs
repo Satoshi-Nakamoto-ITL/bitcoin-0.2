@@ -7,7 +7,6 @@ use crate::core::validation::validate_transaction;
 
 const COINBASE_MATURITY: u64 = 100;
 
-/// CLI wallet & transaction commands
 pub fn handle_command(
     args: Vec<String>,
     wallet: &mut Wallet,
@@ -22,7 +21,6 @@ pub fn handle_command(
     }
 
     match args[2].as_str() {
-        // ───────────────── BALANCE ─────────────────
         "balance" => {
             let chain_guard = chain.lock().unwrap();
             let my_hash = wallet.address().expect("wallet locked");
@@ -53,28 +51,14 @@ pub fn handle_command(
             println!("🔒 Locked balance:    {}", locked);
         }
 
-        // ───────────────── SEND ─────────────────
         "send" => {
             if args.len() != 5 {
                 println!("Usage: wallet send <to_pubkey_hash_hex> <amount>");
                 return;
             }
 
-            let to = match hex::decode(&args[3]) {
-                Ok(v) => v,
-                Err(_) => {
-                    println!("Invalid pubkey hash");
-                    return;
-                }
-            };
-
-            let amount: u64 = match args[4].parse() {
-                Ok(v) => v,
-                Err(_) => {
-                    println!("Invalid amount");
-                    return;
-                }
-            };
+            let to = hex::decode(&args[3]).expect("invalid pubkey hash");
+            let amount: u64 = args[4].parse().expect("invalid amount");
 
             let chain_guard = chain.lock().unwrap();
             let current_height = chain_guard.height();
@@ -83,6 +67,7 @@ pub fn handle_command(
                 &chain_guard.utxos,
                 to,
                 amount,
+                current_height,
             ) {
                 Ok(t) => t,
                 Err(e) => {
@@ -108,8 +93,6 @@ pub fn handle_command(
             }
         }
 
-        _ => {
-            println!("Unknown wallet command");
-        }
+        _ => println!("Unknown wallet command"),
     }
 }

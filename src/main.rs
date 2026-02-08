@@ -43,7 +43,7 @@ const BOOTSTRAP_SEEDS: &[&str] = &[
 ];
 
 fn main() {
-    println!("⛓ Bitcoin v0.4.0 — Revelation Edition (Consensus v4)");
+    println!("⛓ Bitcoin v0.4.1 — Revelation Edition (Consensus v5)");
 
     let wallet_store = load_wallet_store();
     let miner_config = load_miner_config();

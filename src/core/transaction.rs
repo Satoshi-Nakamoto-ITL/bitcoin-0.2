@@ -1,13 +1,36 @@
+// ─────────────────────────────────────────────
+// CONSENSUS v5 — TRANSACTION HASHING
+//
+// txid  ≠ sighash
+//
+// txid:
+//   - excludes signatures & pubkeys
+//   - used for UTXO / Merkle / blocks
+//
+// sighash:
+//   - includes full transaction context
+//   - used ONLY for signing & verification
+//
+// Any change to this file is a HARD FORK.
+// ─────────────────────────────────────────────
+
 use serde::{Serialize, Deserialize};
 use crate::crypto::sha256;
-use crate::consensus::serialize::serialize_transaction;
+use crate::consensus::serialize::{
+    serialize_transaction_for_txid,
+    serialize_transaction_for_sighash,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TxInput {
     pub txid: Vec<u8>,
     pub index: u32,
-    pub pubkey: Vec<u8>,       // compressed pubkey bytes
-    pub signature: Vec<u8>,    // compact 64-byte sig
+
+    // NOT part of txid
+    pub pubkey: Vec<u8>,
+    pub signature: Vec<u8>,
+
+    // Wallet metadata (non-consensus but serialized)
     pub address_index: u32,
 }
 
@@ -24,14 +47,27 @@ pub struct Transaction {
 }
 
 impl Transaction {
-    /// Transaction ID (CONSENSUS)
+    /// Transaction ID (CONSENSUS v5)
+    ///
+    /// Used for:
+    /// - UTXO references
+    /// - Merkle root
+    /// - Block commitment
+    ///
+    /// Signatures and pubkeys are EXCLUDED.
     pub fn txid(&self) -> Vec<u8> {
-        sha256(&serialize_transaction(self))
+        sha256(&serialize_transaction_for_txid(self))
     }
 
-    /// Message signed by each input (CONSENSUS)
+    /// Signature hash (CONSENSUS v5)
+    ///
+    /// Used ONLY for:
+    /// - signing
+    /// - signature verification
+    ///
+    /// Includes full transaction context.
     pub fn sighash(&self) -> Vec<u8> {
-        sha256(&serialize_transaction(self))
+        sha256(&serialize_transaction_for_sighash(self))
     }
 
     /// Estimated serialized size (POLICY ONLY)
